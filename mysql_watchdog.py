@@ -35,7 +35,7 @@ def do_cur(cnx,sql,cur_rets_dict=False):
     try:
         cur = cnx.cursor(dictionary=cur_rets_dict)
         cur.execute(sql)
-        db_data=[ row for row in cur.fetchall() ]
+        db_data=cur.fetchone()
         cur.close()
         return db_data
     except Exception,e:
@@ -44,7 +44,7 @@ def do_cur(cnx,sql,cur_rets_dict=False):
 
 def get_master_status(cnx):
     db_data=do_cur(cnx,"select count(*) from information_schema.processlist where user='repl'")
-    if isinstance(db_data, bool):
+    if isinstance(db_data, type(None)):
         return 0
     if db_data[0]>1:
         return 'up 100%'
@@ -52,19 +52,19 @@ def get_master_status(cnx):
 
 def get_galera_status(cnx):
     db_data=do_cur(cnx,"select variable_value from information_schema.global_status where variable_name='wsrep_local_state'")
-    if isinstance(db_data, bool):
+    if isinstance(db_data, type(None)):
         return 0
-    if db_data[0]==4:
+    if db_data[0]=='4':
         return 'up 100%'
     return 'down'
 
 def get_slave_status(cnx):
 #    db_data=do_cur(cnx,"show all slaves status")
     db_data=do_cur(cnx,"show slave status",True)
-    if isinstance(db_data, bool):
+    if isinstance(db_data, type(None)):
         return 0
-    if isinstance(db_data[0]['Seconds_Behind_Master'],int):
-        lag=db_data[0]['Seconds_Behind_Master']
+    if isinstance(db_data['Seconds_Behind_Master'],int):
+        lag=db_data['Seconds_Behind_Master']
     else:
         return 'down'
     if lag<=60:
@@ -76,6 +76,9 @@ def check_cycle(cnx):
     if not isinstance(haproxy_str,int):
         return haproxy_str
     haproxy_str=get_galera_status(cnx)
+    if not isinstance(haproxy_str,int):
+        return haproxy_str
+    haproxy_str=get_master_status(cnx)
     if not isinstance(haproxy_str,int):
         return haproxy_str
     return 'up 100%'
