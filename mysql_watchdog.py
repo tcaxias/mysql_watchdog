@@ -75,13 +75,10 @@ def check_cycle(cnx):
     haproxy_str=get_slave_status(cnx)
     if not isinstance(haproxy_str,int):
         return haproxy_str
-    haproxy_str=get_master_status(cnx)
-    if not isinstance(haproxy_str,int):
-        return haproxy_str
     haproxy_str=get_galera_status(cnx)
     if not isinstance(haproxy_str,int):
         return haproxy_str
-    return 0
+    return 'up 100%'
 
 # MAIN
 try:
