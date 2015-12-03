@@ -7,6 +7,7 @@ ExecStart=/usr/local/sbin/mysql_watchdog.py
 ExecStopPost=-/bin/fuser -k 3308/tcp
 Restart=always
 RestartSec=1
+StartLimitInterval=0
 
 [Install]
 WantedBy=multi-user.target

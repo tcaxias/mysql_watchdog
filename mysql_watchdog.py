@@ -8,7 +8,7 @@ from subprocess import call
 from time import sleep, time
 import sys
 
-check_time = 5
+check_time = 2
 port = 3308
 
 my_cnf = {
@@ -95,6 +95,7 @@ else:
 serversocket.listen(10)
 
 haproxy_str='down'
+old_haproxy_str='down'
 ts = time()
 
 while True:
@@ -110,9 +111,12 @@ while True:
         if time()-ts > check_time:
             haproxy_str=check_cycle(cnx)
             if isinstance(haproxy_str,int):
-                connection.send('down')
+                connection.send("down\n")
                 connection.close()
                 break
             ts = time()
-        connection.send(haproxy_str)
+        connection.send(haproxy_str+"\n")
         connection.close()
+        if haproxy_str!=old_haproxy_str:
+            p_err("Changed from",old_haproxy_str,"to",haproxy_str)
+            old_haproxy_str=haproxy_str
