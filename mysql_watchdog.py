@@ -43,7 +43,8 @@ def do_cur(cnx,sql,cur_rets_dict=False):
         return False
 
 def get_master_status(cnx):
-    db_data=do_cur(cnx,"select count(*) from information_schema.processlist where user='repl'")
+    db_data=do_cur(cnx,"""select count(*)
+        from information_schema.processlist where user='repl'""")
     if isinstance(db_data, type(None)):
         return 0
     if db_data[0]>1:
@@ -51,7 +52,9 @@ def get_master_status(cnx):
     return 'down'
 
 def get_galera_status(cnx):
-    db_data=do_cur(cnx,"select variable_value from information_schema.global_status where variable_name='wsrep_local_state'")
+    db_data=do_cur(cnx,"""select variable_value
+        from information_schema.global_status
+        where variable_name='wsrep_local_state'""")
     if isinstance(db_data, type(None)):
         return 0
     if db_data[0]=='4':
