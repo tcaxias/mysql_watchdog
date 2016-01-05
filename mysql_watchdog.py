@@ -11,7 +11,7 @@ from stat import S_ISSOCK as is_socket
 from sys import stderr
 from multiprocessing import Pool
 
-check_time = 2
+check_time = 1
 main_port = 3308
 max_time = 60
 sock_dir = '/var/run/mysqld/'
