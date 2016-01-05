@@ -6,22 +6,32 @@ from socket import socket, AF_INET, SOCK_STREAM
 from math import log
 from subprocess import call
 from time import sleep, time
-import sys
+from os import listdir as ls, stat, getpid
+from stat import S_ISSOCK as is_socket
+from sys import stderr
+from multiprocessing import Pool
 
 check_time = 2
-port = 3308
+main_port = 3308
+max_time = 60
+sock_dir = '/var/run/mysqld/'
 
 my_cnf = {
     'option_files' : '/root/.my.cnf',
-    'raw' : False,
-    'unix_socket' : '/var/run/mysqld/mysqld.sock'
+    'raw' : False
 }
 
-def p_err(*objs):
-    print(*objs, file=sys.stderr)
+def nl(a):
+    return a+'\n'
 
-def lag_to_percent(lag):
-    return 100 * log(60-lag,60)
+def get_sockets(dir=sock_dir):
+    return [ s for s in ls(dir) if is_socket(stat(dir + s).st_mode) ]
+
+def p_err(*objs):
+    print("[" + str(getpid()) + "]", *objs, file=stderr)
+
+def lag_to_percent(lag,max_time=max_time):
+    return 100 * log(max_time-lag,max_time)
 
 def do_cnx(**my_cnf):
     try:
@@ -70,9 +80,19 @@ def get_slave_status(cnx):
         lag=db_data['Seconds_Behind_Master']
     else:
         return 'down'
-    if lag<=60:
+    if lag<max_time:
         return 'up ' + str(int(lag_to_percent(lag))) + '%'
     return 'down'
+
+def get_port(cnx):
+    db_data=do_cur(cnx,"""
+    select variable_value from information_schema.global_variables
+    where variable_name='port';""")
+    if isinstance(db_data, type(None)):
+        return 0
+    if int(db_data[0])>0:
+        return int(db_data[0])
+    return 0
 
 def check_cycle(cnx):
     haproxy_str=get_slave_status(cnx)
@@ -86,40 +106,74 @@ def check_cycle(cnx):
         return haproxy_str
     return 'up 100%'
 
-# MAIN
-try:
-    serversocket = socket(AF_INET, SOCK_STREAM)
-    serversocket.bind(('0.0.0.0', port))
-except Exception,e:
-    quit(e)
-else:
-    p_err("Got port ",port,", starting to listen.")
+def listen_tcp(port):
+    try:
+        serversocket = socket(AF_INET, SOCK_STREAM)
+        serversocket.bind(('0.0.0.0', port))
+    except Exception,e:
+        p_err("port "+str(port)+" "+str(e))
+        quit()
+    else:
+        p_err("Got port ",port,", starting to listen.")
+    serversocket.listen(10)
+    return serversocket
 
-serversocket.listen(10)
-
-haproxy_str='down'
-old_haproxy_str='down'
-ts = time()
-
-while True:
-    while True:
-        cnx=do_cnx(**my_cnf)
-        if isinstance(cnx,bool):
-            sleep(1)
-        else:
-            break
+def spawn_monitor(my_cnf,main_port=main_port):
+    haproxy_str = 'down'
+    old_haproxy_str = 'down'
+    ts = time()
+    serversocket=0
+    db_port = 0
 
     while True:
-        connection, address = serversocket.accept()
-        if time()-ts > check_time:
-            haproxy_str=check_cycle(cnx)
-            if isinstance(haproxy_str,int):
-                connection.send("down\n")
-                connection.close()
+        while True:
+            cnx=do_cnx(**my_cnf)
+            if isinstance(cnx,bool):
+                sleep(1)
+            else:
+                db_port = get_port(cnx)
+                p_err(db_port)
                 break
-            ts = time()
-        connection.send(haproxy_str+"\n")
-        connection.close()
-        if haproxy_str!=old_haproxy_str:
-            p_err("Changed from",old_haproxy_str,"to",haproxy_str)
-            old_haproxy_str=haproxy_str
+
+        try:
+            serversocket.close()
+        except:
+            pass
+        finally:
+            serversocket = listen_tcp(db_port+2)
+
+        while True:
+            connection, address = serversocket.accept()
+            if time()-ts > check_time:
+                haproxy_str=check_cycle(cnx)
+                if isinstance(haproxy_str,int):
+                    connection.send(nl('down'))
+                    connection.close()
+                    break
+                ts = time()
+            connection.send(nl(haproxy_str))
+            connection.close()
+            if haproxy_str!=old_haproxy_str:
+                p_err("Changed from",old_haproxy_str,"to",haproxy_str)
+                old_haproxy_str=haproxy_str
+
+if __name__ == '__main__':
+    # MAIN
+    try:
+        sockets = map(lambda x : sock_dir + x, get_sockets())
+        sockets[0]+'abc'
+    except Exception,e:
+        quit("No mysql sockets found in",sock_dir)
+    else:
+        p_err("Monitoring sockets",sockets)
+
+    if len(sockets)==1:
+        my_cnf['unix_socket'] = sockets[0]
+        spawn_monitor(my_cnf)
+    elif len(sockets)>1:
+        serversocket = listen_tcp(main_port)
+        p=Pool(len(sockets))
+        p.map(spawn_monitor,
+            [ dict(my_cnf,**{'unix_socket':s}) for s in sockets ])
+    else:
+        quit("Empty socket list")
