@@ -35,7 +35,7 @@ def get_sockets(dir=sock_dir):
     return [ s for s in ls(dir) if is_socket(stat(dir + s).st_mode) ]
 
 def p_err(*objs):
-    print("[" + str(getpid()) + "]", *objs, file=stderr)
+    print("[" + str(getpid()) + "] " +str(*objs).replace('\n',' '),file=stderr)
 
 def lag_to_percent(lag,max_time=max_time):
     return 100 * log(max_time-lag,max_time)
