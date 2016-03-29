@@ -35,7 +35,7 @@ def get_sockets(dir=sock_dir):
     return [ s for s in ls(dir) if is_socket(stat(dir + s).st_mode) ]
 
 def p_err(*objs):
-    print("[" + str(getpid()) + "] " +str(*objs).replace('\n',' '),file=stderr)
+    print("[" + str(getpid()) + "] ", *objs ,file=stderr)
 
 def lag_to_percent(lag,max_time=max_time):
     return 100 * log(max_time-lag,max_time)
@@ -60,8 +60,10 @@ def do_cur(cnx,sql,cur_rets_dict=False):
         return None
 
 def get_master_status(cnx):
-    db_data=do_cur(cnx,"""select count(*)
-        from information_schema.processlist where user='repl'""")
+    db_data=do_cur(cnx,"""
+select count(*)
+from information_schema.processlist where user='repl'
+""".replace('\n',''))
     if isinstance(db_data, type(None)):
         return 0
     if db_data[0][0]>1:
@@ -69,9 +71,11 @@ def get_master_status(cnx):
     return 'down'
 
 def get_galera_status(cnx):
-    db_data = do_cur(cnx,"""select variable_value
-        from information_schema.global_status
-        where variable_name='wsrep_local_state'""")
+    db_data = do_cur(cnx,"""
+select variable_value
+from information_schema.global_status
+where variable_name='wsrep_local_state'
+""".replace('\n',''))
     if isinstance(db_data, type(None)):
         return 0
     if db_data[0][0]=='4':
@@ -182,6 +186,7 @@ if __name__ == '__main__':
     except Exception,e:
         quit("Error parsing args")
     else:
+        (sock_dir, main_port, check_time, max_time) = (args.sock_dir, args.main_port, args.check_time, args.max_time)
         p_err(args)
 
     try:
