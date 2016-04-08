@@ -3,7 +3,7 @@ Description=MySQL Watchdog
 
 [Service]
 ExecStartPre=-/bin/fuser -k 3308/tcp
-ExecStart=/usr/local/sbin/mysql_watchdog.py
+ExecStart=/usr/local/sbin/mysql_watchdog.py --max_time=%i
 ExecStopPost=-/bin/fuser -k 3308/tcp
 Restart=always
 RestartSec=1
