@@ -59,6 +59,10 @@ def do_cur(cnx,sql,cur_rets_dict=False):
         p_err(e, '->', sql)
         return None
 
+def dead_db(cnx):
+    db_data=do_cur(cnx,"select 42",True)
+    return isinstance(db_data, type(None))
+
 def get_master_status(cnx):
     db_data=do_cur(cnx,"""
 select count(*)
@@ -146,12 +150,12 @@ def spawn_monitor(my_cnf,main_port=main_port):
     haproxy_str = 'down'
     old_haproxy_str = 'down'
     ts = time()
-    serversocket=0
+    serversocket = 0
     db_port = 0
 
     while True:
         while True:
-            cnx=do_cnx(**my_cnf)
+            cnx = do_cnx(**my_cnf)
             if isinstance(cnx,bool):
                 sleep(1)
             else:
@@ -169,15 +173,17 @@ def spawn_monitor(my_cnf,main_port=main_port):
         while True:
             connection, address = serversocket.accept()
             if time()-ts > check_time:
-                haproxy_str=check_cycle(cnx)
+                if dead_db(cnx):
+                    quit('Dead DB Connection')
+                haproxy_str = check_cycle(cnx)
                 if isinstance(haproxy_str,int):
                     answer(connection)
                     break
                 ts = time()
-            answer(connection,response=haproxy_str)
-            if haproxy_str!=old_haproxy_str:
+            answer(connection,response = haproxy_str)
+            if haproxy_str != old_haproxy_str:
                 p_err("Changed from",old_haproxy_str,"to",haproxy_str)
-                old_haproxy_str=haproxy_str
+                old_haproxy_str = haproxy_str
 
 if __name__ == '__main__':
     # MAIN
@@ -193,7 +199,7 @@ if __name__ == '__main__':
         sockets = map(lambda x : sock_dir + x, get_sockets())
         sockets[0]+'abc'
     except Exception,e:
-        quit("No mysql sockets found in",sock_dir)
+        quit("No mysql sockets found in" + str(sock_dir))
     else:
         p_err("Monitoring sockets",sockets)
 
