@@ -14,7 +14,7 @@ import argparse
 
 sock_dir = '/var/run/mysqld/'
 main_port = 3308
-check_time = 1
+check_time = 2
 max_time = 60
 
 arg_parser = argparse.ArgumentParser()
