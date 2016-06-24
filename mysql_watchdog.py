@@ -14,11 +14,13 @@ import argparse
 
 sock_dir = '/var/run/mysqld/'
 main_port = 3308
-check_time = 2
 max_time = 60
+check_time = int(max_time/2)
+# how much time to sleep if there's an issue - avoid quick restarts
+calm = 10
 
 arg_parser = argparse.ArgumentParser()
-arg_parser.add_argument('-c','--check_time',default=1,type=int,dest='check_time')
+arg_parser.add_argument('-c','--check_time',default=int(max_time/2),type=int,dest='check_time')
 arg_parser.add_argument('-p','--main_port',default=3308,type=int,dest='main_port')
 arg_parser.add_argument('-m','--max_time',default=60,type=int,dest='max_time')
 arg_parser.add_argument('-s','--sock_dir',default='/var/run/mysqld/',dest='sock_dir')
@@ -47,6 +49,14 @@ def do_cnx(**my_cnf):
     except Exception,e:
         p_err(e)
         return False
+
+def un_cnx(cnx):
+    try:
+        cnx.close()
+    except Exception,e:
+        p_err(e)
+    finally:
+        return cnx
 
 def do_cur(cnx,sql,cur_rets_dict=False):
     try:
@@ -101,7 +111,7 @@ def get_slave_status(cnx):
     if lag>0:
         p_err(lag,"seconds behind master - our max is ",max_time)
     if lag<max_time:
-        return 'up ' + str(int(lag_to_percent(lag))) + '%'
+        return 'up ' + str(int(lag_to_percent(lag,max_time))) + '%'
     return 'down'
 
 def get_port(cnx):
@@ -109,10 +119,10 @@ def get_port(cnx):
     select variable_value from information_schema.global_variables
     where variable_name='port';""")
     if isinstance(db_data, type(None)):
-        return 0
+        return None
     if int(db_data[0][0])>0:
         return int(db_data[0][0])
-    return 0
+    return None
 
 def check_cycle(cnx):
     haproxy_str=get_slave_status(cnx)
@@ -154,42 +164,42 @@ def spawn_monitor(my_cnf,main_port=main_port):
     db_port = 0
 
     while True:
-        while True:
-            cnx = do_cnx(**my_cnf)
-            if isinstance(cnx,bool):
-                sleep(1)
-            else:
-                db_port = get_port(cnx)
-                p_err(db_port)
+        cnx = do_cnx(**my_cnf)
+        if isinstance(cnx,bool):
+            sleep(calm)
+        else:
+            db_port = get_port(cnx)
+            p_err(db_port)
+            if db_port:
+                un_cnx(cnx)
                 break
+    try:
+        serversocket.close()
+    except:
+        pass
+    finally:
+        serversocket = listen_tcp(db_port+2)
 
-        try:
-            serversocket.close()
-        except:
-            pass
-        finally:
-            serversocket = listen_tcp(db_port+2)
-
-        while True:
-            connection, address = serversocket.accept()
-            if time()-ts > check_time:
-                if dead_db(cnx):
-                    quit('Dead DB Connection')
-                haproxy_str = check_cycle(cnx)
-                if isinstance(haproxy_str,int):
-                    answer(connection)
-                    break
-                ts = time()
-            answer(connection,response = haproxy_str)
-            if haproxy_str != old_haproxy_str:
-                p_err("Changed from",old_haproxy_str,"to",haproxy_str)
-                old_haproxy_str = haproxy_str
+    while True:
+        connection, address = serversocket.accept()
+        if time()-ts > check_time:
+            cnx = do_cnx(**my_cnf)
+            if not cnx:
+                break
+            haproxy_str = check_cycle(cnx)
+            un_cnx(cnx)
+            ts = time()
+        answer(connection,response = haproxy_str)
+        if haproxy_str != old_haproxy_str:
+            p_err("Changed from",old_haproxy_str,"to",haproxy_str)
+            old_haproxy_str = haproxy_str
 
 if __name__ == '__main__':
     # MAIN
     try:
         args = arg_parser.parse_args()
     except Exception,e:
+        sleep(calm)
         quit("Error parsing args")
     else:
         (sock_dir, main_port, check_time, max_time) = (args.sock_dir, args.main_port, args.check_time, args.max_time)
@@ -199,6 +209,7 @@ if __name__ == '__main__':
         sockets = map(lambda x : sock_dir + x, get_sockets())
         sockets[0]+'abc'
     except Exception,e:
+        sleep(calm)
         quit("No mysql sockets found in" + str(sock_dir))
     else:
         p_err("Monitoring sockets",sockets)
@@ -212,4 +223,5 @@ if __name__ == '__main__':
         p.map(spawn_monitor,
             [ dict(my_cnf,**{'unix_socket':s}) for s in sockets ])
     else:
+        sleep(calm)
         quit("Empty socket list")
