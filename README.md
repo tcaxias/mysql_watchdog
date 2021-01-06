@@ -1,2 +1,3 @@
-# mysql_watchdog
-over-simplistic daemon to report on mysql topology status
+# Archived
+
+This is not being used anymore, original code in `master` branch.
